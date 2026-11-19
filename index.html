@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TrustShield — Verified P2P Escrow</title>
+  <script src="https://sdk.minepi.com/pi-sdk.js"></script>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 16px; background: #0f172a; color: #f8fafc; }
+    .card { background: #1e293b; border-radius: 12px; padding: 14px; margin-bottom: 12px; border: 1px solid #334155; }
+    .badge { display: inline-block; background: #14532d; color: #86efac; font-size: 12px; padding: 2px 8px; border-radius: 999px; margin-bottom: 6px; }
+    button { background: #eab308; color: #0f172a; border: none; padding: 10px 14px; border-radius: 8px; font-weight: 700; cursor: pointer; width: 100%; }
+    button.secondary { background: #334155; color: #f8fafc; margin-top: 8px; }
+    .status { font-size: 13px; color: #fde047; margin-top: 8px; }
+    .row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  </style>
+</head>
+<body>
+  <h2>TrustShield (Testnet)</h2>
+  <div class="card">
+    <div id="userBox">Not signed in</div>
+    <button id="loginBtn" style="margin-top:10px;">Sign in with Pi</button>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <div>
+        <strong>Pro Merchant Pass</strong><br />
+        <small style="color:#94a3b8;">Weekly verified seller badge (2 Test-Pi)</small>
+      </div>
+      <button id="subBtn" style="width:auto;">Subscribe</button>
+    </div>
+  </div>
+
+  <div id="listings"></div>
+
+  <div class="card">
+    <strong>Escrow Orders</strong>
+    <div id="orders" class="status">No active escrow orders yet.</div>
+  </div>
+
+  <script>
+    Pi.init({ version: "2.0", sandbox: true });
+
+    let currentUser = null;
+    const items = [
+      { id: "itm-1", title: "20,000mAh Fast Power Bank", seller: "@verified_hub", price: 5 },
+      { id: "itm-2", title: "65W USB-C GaN Charger", seller: "@tech_vault", price: 3 },
+      { id: "itm-3", title: "Wireless Desk Mouse", seller: "@gear_drop", price: 4 }
+    ];
+
+    function onIncompletePaymentFound(payment) {
+      console.log("Incomplete payment:", payment);
+    }
+
+    async function signInWithPi() {
+      try {
+        const auth = await Pi.authenticate(["username", "payments"], onIncompletePaymentFound);
+        currentUser = auth.user;
+        document.getElementById("userBox").innerHTML =
+          `Signed in as <strong>@${currentUser.username}</strong><br><small style="color:#94a3b8;">UID: ${currentUser.uid}</small>`;
+      } catch (err) {
+        alert("Pi sign-in error: " + err.message);
+      }
+    }
+
+    function startEscrowPayment(item) {
+      if (!currentUser) {
+        alert("Sign in with Pi first.");
+        return;
+      }
+
+      Pi.createPayment(
+        {
+          amount: item.price,
+          memo: `TrustShield Escrow: ${item.title}`,
+          metadata: { itemId: item.id, buyer: currentUser.username, type: "escrow" }
+        },
+        {
+          onReadyForServerApproval: function(paymentId) {
+            console.log("Approve paymentId on backend:", paymentId);
+          },
+          onReadyForServerCompletion: function(paymentId, txid) {
+            console.log("Complete paymentId on backend:", paymentId, txid);
+            renderEscrowOrder(item, paymentId, txid);
+          },
+          onCancel: function(paymentId) {
+            alert("Payment cancelled: " + paymentId);
+          },
+          onError: function(err) {
+            alert("Payment error: " + err.message);
+          }
+        }
+      );
+    }
+
+    function renderEscrowOrder(item, paymentId, txid) {
+      const ordersEl = document.getElementById("orders");
+      const orderId = "ord_" + Date.now();
+      ordersEl.innerHTML = `
+        <div style="margin-top:8px; padding-top:8px; border-top:1px solid #334155;">
+          <div><strong>${item.title}</strong> (${item.price} Test-Pi)</div>
+          <div>Status: <span id="${orderId}_status">Funds Locked in Escrow</span></div>
+          <small style="color:#94a3b8;">Payment ID: ${paymentId} | TX: ${txid.slice(0, 12)}...</small>
+          <button class="secondary" onclick="confirmDelivery('${orderId}')">Confirm Delivery & Release</button>
+        </div>
+      `;
+    }
+
+    function confirmDelivery(orderId) {
+      document.getElementById(orderId + "_status").innerText = "Released to Seller (Completed)";
+    }
+
+    function renderListings() {
+      const container = document.getElementById("listings");
+      container.innerHTML = items.map(item => `
+        <div class="card">
+          <span class="badge">KYC Verified Seller</span>
+          <div style="font-size:16px; font-weight:700;">${item.title}</div>
+          <div style="color:#94a3b8; font-size:13px; margin:4px 0 10px;">Seller: ${item.seller} • <strong>${item.price} Test-Pi</strong></div>
+          <button onclick='startEscrowPayment(${JSON.stringify(item)})'>Lock ${item.price} Test-Pi in Escrow</button>
+        </div>
+      `).join("");
+    }
+
+    document.getElementById("loginBtn").addEventListener("click", signInWithPi);
+    document.getElementById("subBtn").addEventListener("click", () => {
+      startEscrowPayment({ id: "pro-pass", title: "Pro Merchant Weekly Pass", seller: "@trustshield", price: 2 });
+    });
+
+    renderListings();
+  </script>
+</body>
+</html>
